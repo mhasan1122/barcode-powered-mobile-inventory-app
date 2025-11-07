@@ -18,17 +18,39 @@ const CategoryColumn = ({
   onProductLongPress,
   onAddCategory,
   isUncategorized = false,
+  selectionMode = false,
+  selectedProducts = [],
+  onDragStart,
+  onDragEnd,
+  onDragMove,
+  onDragOver,
+  isDragOver = false,
+  draggingProduct = null,
 }) => {
-  const categoryColor = getCategoryColor(category);
+  const categoryName = String(category || 'Uncategorized');
+  const categoryColor = getCategoryColor(categoryName);
 
   return (
-    <View style={styles.container}>
+    <View 
+      style={[
+        styles.container,
+        isDragOver && styles.containerDragOver,
+        isDragOver && { borderColor: categoryColor, borderWidth: 2 },
+      ]}
+      onLayout={(event) => {
+        // Store layout for drop detection
+        if (onDragOver) {
+          const { x, y, width, height } = event.nativeEvent.layout;
+          onDragOver(categoryName, { x, y, width, height });
+        }
+      }}
+    >
       <View style={[styles.header, { borderLeftColor: categoryColor }]}>
         <View style={styles.headerContent}>
           <View style={[styles.colorIndicator, { backgroundColor: categoryColor }]} />
-          <Text style={styles.categoryName}>{category}</Text>
+          <Text style={styles.categoryName}>{categoryName}</Text>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{products.length}</Text>
+            <Text style={styles.badgeText}>{String(products.length ?? 0)}</Text>
           </View>
         </View>
         {isUncategorized && (
@@ -53,14 +75,31 @@ const CategoryColumn = ({
             <Text style={styles.emptyText}>No products</Text>
           </View>
         ) : (
-          products.map((product, index) => (
-            <ProductCard
-              key={product.id || product.barcode || index}
-              product={product}
-              onPress={() => onProductPress && onProductPress(product)}
-              onLongPress={() => onProductLongPress && onProductLongPress(product)}
-            />
-          ))
+          products.map((product, index) => {
+            const isSelected = selectedProducts.some(p => 
+              (p.id === product.id || p._id === product._id) && p.barcode === product.barcode
+            );
+            const isDragging = draggingProduct && (
+              (draggingProduct.id === product.id || draggingProduct._id === product._id) &&
+              draggingProduct.barcode === product.barcode
+            );
+            
+            return (
+              <ProductCard
+                key={product.id || product._id || product.barcode || `product-${index}`}
+                product={product}
+                onPress={() => onProductPress && onProductPress(product)}
+                onLongPress={() => onProductLongPress && onProductLongPress(product)}
+                selectionMode={selectionMode}
+                isSelected={isSelected}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onDragMove={onDragMove}
+                isDragging={isDragging}
+                dragOpacity={isDragging ? 0.3 : 1}
+              />
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -130,6 +169,9 @@ const styles = StyleSheet.create({
     fontSize: SIZES.caption,
     color: COLORS.textLight,
     marginTop: 8,
+  },
+  containerDragOver: {
+    backgroundColor: COLORS.primaryLight + '10',
   },
 });
 

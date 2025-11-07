@@ -4,10 +4,11 @@ import { COLORS, CATEGORY_COLORS } from '../constants';
  * Get a color for a category based on its name
  */
 export const getCategoryColor = (categoryName, index = 0) => {
-  if (categoryName === 'Uncategorized') {
+  const name = String(categoryName || 'Uncategorized');
+  if (name === 'Uncategorized') {
     return COLORS.uncategorized;
   }
-  const hash = categoryName.split('').reduce((acc, char) => {
+  const hash = name.split('').reduce((acc, char) => {
     return char.charCodeAt(0) + ((acc << 5) - acc);
   }, 0);
   return CATEGORY_COLORS[Math.abs(hash) % CATEGORY_COLORS.length];

@@ -46,7 +46,15 @@ export const getCategories = async () => {
 
     if (response.success) {
       // Ensure 'Uncategorized' is always included
-      const categories = response.data || [];
+      const categories = (response.data || [])
+        .map(cat => {
+          // Handle both string and object responses
+          if (typeof cat === 'string') return cat;
+          if (cat && typeof cat === 'object' && cat.name) return String(cat.name);
+          return String(cat || 'Uncategorized');
+        })
+        .filter(cat => cat && cat.trim());
+      
       if (!categories.includes('Uncategorized')) {
         categories.unshift('Uncategorized');
       }

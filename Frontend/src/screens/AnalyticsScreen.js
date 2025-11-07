@@ -79,7 +79,7 @@ const AnalyticsScreen = ({ navigation }) => {
       <View style={[styles.statIconContainer, { backgroundColor: color + '20' }]}>
         <Ionicons name={icon} size={24} color={color} />
       </View>
-      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statValue}>{String(value ?? 0)}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
@@ -127,17 +127,18 @@ const AnalyticsScreen = ({ navigation }) => {
         ) : (
           <View style={styles.categoryList}>
             {Object.entries(stats.categoryCounts).map(([category, count]) => {
-              const color = getCategoryColor(category);
+              const categoryName = String(category || 'Uncategorized');
+              const color = getCategoryColor(categoryName);
               const percentage = stats.totalProducts > 0
                 ? ((count / stats.totalProducts) * 100).toFixed(1)
-                : 0;
+                : '0.0';
 
               return (
-                <View key={category} style={styles.categoryItem}>
+                <View key={categoryName} style={styles.categoryItem}>
                   <View style={styles.categoryHeader}>
                     <View style={[styles.categoryColorDot, { backgroundColor: color }]} />
-                    <Text style={styles.categoryName}>{category}</Text>
-                    <Text style={styles.categoryCount}>{count}</Text>
+                    <Text style={styles.categoryName}>{categoryName}</Text>
+                    <Text style={styles.categoryCount}>{String(count ?? 0)}</Text>
                   </View>
                   <View style={styles.progressBar}>
                     <View
@@ -147,7 +148,7 @@ const AnalyticsScreen = ({ navigation }) => {
                       ]}
                     />
                   </View>
-                  <Text style={styles.percentageText}>{percentage}%</Text>
+                  <Text style={styles.percentageText}>{`${percentage}%`}</Text>
                 </View>
               );
             })}
@@ -177,7 +178,7 @@ const AnalyticsScreen = ({ navigation }) => {
         ) : (
           <View style={styles.recentProductsList}>
             {stats.recentProducts.map((product, index) => (
-              <View key={product.id || product._id || product.barcode || index} style={styles.recentProductItem}>
+              <View key={product.id || product._id || product.barcode || `recent-product-${index}`} style={styles.recentProductItem}>
                 <View style={styles.recentProductInfo}>
                   <Text style={styles.recentProductName} numberOfLines={1}>
                     {product.name || product.productName || 'Unknown Product'}
@@ -192,7 +193,7 @@ const AnalyticsScreen = ({ navigation }) => {
                       styles.categoryBadge,
                       {
                         backgroundColor:
-                          getCategoryColor(product.category || DEFAULT_CATEGORY) + '20',
+                          getCategoryColor(String(product.category || DEFAULT_CATEGORY)) + '20',
                       },
                     ]}
                   >
@@ -200,11 +201,11 @@ const AnalyticsScreen = ({ navigation }) => {
                       style={[
                         styles.categoryBadgeText,
                         {
-                          color: getCategoryColor(product.category || DEFAULT_CATEGORY),
+                          color: getCategoryColor(String(product.category || DEFAULT_CATEGORY)),
                         },
                       ]}
                     >
-                      {product.category || DEFAULT_CATEGORY}
+                      {String(product.category || DEFAULT_CATEGORY)}
                     </Text>
                   </View>
                 </View>

@@ -166,7 +166,7 @@ const SearchScreen = ({ navigation }) => {
       ) : (
         <FlatList
           data={filteredProducts}
-          keyExtractor={(item, index) => item.id || item._id || item.barcode || index.toString()}
+          keyExtractor={(item, index) => item.id || item._id || item.barcode || `search-product-${index}`}
           renderItem={({ item }) => (
             <ProductCard
               product={item}
@@ -181,7 +181,7 @@ const SearchScreen = ({ navigation }) => {
       {searchQuery && (
         <View style={[styles.resultsInfo, { paddingBottom: insets.bottom }]}>
           <Text style={styles.resultsText}>
-            {filteredProducts.length} result{filteredProducts.length !== 1 ? 's' : ''} found
+            {`${filteredProducts.length} result${filteredProducts.length !== 1 ? 's' : ''} found`}
           </Text>
         </View>
       )}

@@ -5,19 +5,138 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
+  Animated,
 } from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, SHADOWS } from '../constants';
 import { truncateText, formatDate } from '../utils/helpers';
 
-const ProductCard = ({ product, onPress, onLongPress }) => {
-  return (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      activeOpacity={0.7}
+const ProductCard = ({ 
+  product, 
+  onPress, 
+  onLongPress, 
+  selectionMode = false, 
+  isSelected = false,
+  onDragStart,
+  onDragEnd,
+  onDragMove,
+  isDragging = false,
+  dragOpacity = 1,
+}) => {
+  const translateX = React.useRef(new Animated.Value(0)).current;
+  const translateY = React.useRef(new Animated.Value(0)).current;
+  const scale = React.useRef(new Animated.Value(1)).current;
+  const opacity = React.useRef(new Animated.Value(1)).current;
+
+  // Handle gesture event - update animated values and notify parent
+  const handleGestureEvent = (event) => {
+    const { translationX: tx, translationY: ty } = event.nativeEvent;
+    
+    // Update animated values (without native driver for manual control)
+    translateX.setValue(tx);
+    translateY.setValue(ty);
+    
+    // Notify parent of drag movement for drop zone detection
+    if (onDragMove) {
+      onDragMove(event);
+    }
+  };
+
+  const handleHandlerStateChange = (event) => {
+    if (event.nativeEvent.oldState === State.ACTIVE) {
+      // Gesture ended
+      if (onDragEnd) {
+        onDragEnd(event.nativeEvent);
+      }
+      
+      // Stop any running animations first
+      translateX.stopAnimation();
+      translateY.stopAnimation();
+      scale.stopAnimation();
+      opacity.stopAnimation();
+      
+      // Reset position - all use non-native driver to avoid conflicts
+      Animated.parallel([
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 7,
+        }),
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 7,
+        }),
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 7,
+        }),
+        Animated.spring(opacity, {
+          toValue: 1,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 7,
+        }),
+      ]).start();
+    } else if (event.nativeEvent.state === State.BEGAN) {
+      // Gesture started
+      if (onDragStart) {
+        onDragStart(product, event.nativeEvent);
+      }
+      
+      // Stop any running animations first
+      scale.stopAnimation();
+      opacity.stopAnimation();
+      
+      // Scale up and reduce opacity - use non-native driver
+      Animated.parallel([
+        Animated.spring(scale, {
+          toValue: 1.05,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 7,
+        }),
+        Animated.spring(opacity, {
+          toValue: 0.8,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 7,
+        }),
+      ]).start();
+    }
+  };
+
+  const animatedStyle = {
+    transform: [
+      { translateX: translateX },
+      { translateY: translateY },
+      { scale: isDragging ? scale : 1 },
+    ],
+    opacity: isDragging ? opacity : dragOpacity,
+    zIndex: isDragging ? 1000 : 1,
+  };
+
+  const cardContent = (
+    <View
+      style={[
+        styles.card,
+        selectionMode && styles.cardSelectionMode,
+        isSelected && styles.cardSelected,
+        isDragging && styles.cardDragging,
+      ]}
     >
+      {selectionMode && (
+        <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+          {isSelected && (
+            <Ionicons name="checkmark" size={16} color={COLORS.surface} />
+          )}
+        </View>
+      )}
       {product.image ? (
         <Image source={{ uri: product.image }} style={styles.image} />
       ) : (
@@ -31,26 +150,26 @@ const ProductCard = ({ product, onPress, onLongPress }) => {
           {product.name || product.productName || 'Unknown Product'}
         </Text>
         
-        {product.barcode && (
+        {Boolean(product.barcode && String(product.barcode).trim()) && (
           <View style={styles.barcodeContainer}>
             <Ionicons name="barcode-outline" size={14} color={COLORS.textSecondary} />
-            <Text style={styles.barcode}>{product.barcode}</Text>
+            <Text style={styles.barcode}>{String(product.barcode)}</Text>
           </View>
         )}
         
-        {product.price && (
+        {product.price != null && product.price !== '' && (
           <Text style={styles.price}>
-            ${parseFloat(product.price).toFixed(2)}
+            {`$${parseFloat(product.price || 0).toFixed(2)}`}
           </Text>
         )}
         
-        {product.description && (
+        {Boolean(product.description && String(product.description).trim()) && (
           <Text style={styles.description} numberOfLines={2}>
-            {truncateText(product.description, 60)}
+            {truncateText(String(product.description), 60)}
           </Text>
         )}
         
-        {product.createdAt && (
+        {Boolean(product.createdAt) && (
           <Text style={styles.date}>{formatDate(product.createdAt)}</Text>
         )}
       </View>
@@ -58,7 +177,44 @@ const ProductCard = ({ product, onPress, onLongPress }) => {
       <View style={styles.dragHandle}>
         <Ionicons name="reorder-three-outline" size={20} color={COLORS.textLight} />
       </View>
-    </TouchableOpacity>
+    </View>
+  );
+
+  if (selectionMode) {
+    // In selection mode, don't allow dragging
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        onLongPress={onLongPress}
+        activeOpacity={0.7}
+      >
+        {cardContent}
+      </TouchableOpacity>
+    );
+  }
+
+  // Use PanGestureHandler for drag-and-drop
+  return (
+    <PanGestureHandler
+      onGestureEvent={handleGestureEvent}
+      onHandlerStateChange={handleHandlerStateChange}
+      minPointers={1}
+      activeOffsetX={[-5, 5]} // Reduced threshold to make dragging easier
+      activeOffsetY={[-5, 5]} // Reduced threshold to make dragging easier
+      failOffsetY={[-100, 100]} // Increased to allow more vertical movement
+      avgTouches={true}
+    >
+      <Animated.View style={animatedStyle}>
+        <TouchableOpacity
+          onPress={onPress}
+          onLongPress={onLongPress}
+          activeOpacity={0.7}
+          delayLongPress={200}
+        >
+          {cardContent}
+        </TouchableOpacity>
+      </Animated.View>
+    </PanGestureHandler>
   );
 };
 
@@ -125,6 +281,35 @@ const styles = StyleSheet.create({
   dragHandle: {
     justifyContent: 'center',
     paddingLeft: 8,
+  },
+  cardSelectionMode: {
+    borderWidth: 2,
+    borderColor: COLORS.border,
+  },
+  cardSelected: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight + '10',
+  },
+  cardDragging: {
+    elevation: 8,
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  checkboxSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
   },
 });
 

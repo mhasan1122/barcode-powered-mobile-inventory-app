@@ -3,7 +3,7 @@
 export const ENVIRONMENT = {
   // Development environment
   DEV: {
-    BACKEND_URL: ['http://192.168.0.105:3000', 'http://localhost:3000', 'http://127.0.0.1:3000'], // Array of fallback URLs // Use first if available, else second
+    BACKEND_URL: ['http://192.168.0.105:5000', 'http://localhost:5000', 'http://127.0.0.1:5000'], // Array of fallback URLs // Use first if available, else second
     API_TIMEOUT: 10000,
     RETRY_ATTEMPTS: 3, // Increased retry attempts
     RETRY_DELAY: 1000,
@@ -13,7 +13,7 @@ export const ENVIRONMENT = {
   
   // Local development (same machine)
   LOCAL: {
-    BACKEND_URL: 'http://localhost:3000',
+    BACKEND_URL: 'http://localhost:5000',
     API_TIMEOUT: 5000,
     RETRY_ATTEMPTS: 2,
     RETRY_DELAY: 500,
@@ -23,7 +23,7 @@ export const ENVIRONMENT = {
   
   // Production environment (update this when deploying)
   PROD: {
-    BACKEND_URL: 'https://your-production-domain.com',
+    BACKEND_URL: 'https://barcode-powered-mobile-inventory-app-1.onrender.com',
     API_TIMEOUT: 15000,
     RETRY_ATTEMPTS: 3,
     RETRY_DELAY: 2000,
@@ -32,8 +32,11 @@ export const ENVIRONMENT = {
   }
 };
 
-// Current environment - change this based on your setup
-export const CURRENT_ENV = 'DEV';
+// Current environment - set to PROD to use hosted backend
+// You can manually override by setting: export const CURRENT_ENV = 'DEV' or 'LOCAL';
+// Options: 'DEV', 'LOCAL', 'PROD'
+// Using PROD by default since backend is hosted on Render
+export const CURRENT_ENV = 'PROD';
 
 // Get current environment configuration
 export const getCurrentConfig = () => {
@@ -86,9 +89,9 @@ export const updateBackendURL = (newURL) => {
 export const getFallbackURLs = () => {
   return [
     // Current machine IP (primary)
-    'http://localhost:3000',      // Local
-    'http://127.0.0.1:3000',     // Local
-    'http://10.0.2.2:3000',      // Android emulator
+    'http://localhost:5000',      // Local
+    'http://127.0.0.1:5000',     // Local
+    'http://10.0.2.2:5000',      // Android emulator
   ];
 };
 

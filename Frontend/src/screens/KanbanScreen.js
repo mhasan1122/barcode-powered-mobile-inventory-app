@@ -6,29 +6,63 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, SHADOWS, DEFAULT_CATEGORY } from '../constants';
 import CategoryColumn from '../components/CategoryColumn';
 import CategoryModal from '../components/CategoryModal';
-import { getProducts, saveProducts, getCategories, saveCategories } from '../utils/storage';
+import { getProducts, updateProduct, deleteProduct } from '../api/products';
+import { getCategories, createCategory } from '../api/categories';
 
 const KanbanScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([DEFAULT_CATEGORY]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
-  }, []);
+    
+    // Refresh data when screen comes into focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadData();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const loadData = async () => {
-    const loadedProducts = await getProducts();
-    const loadedCategories = await getCategories();
-    setProducts(loadedProducts);
-    setCategories(loadedCategories.length > 0 ? loadedCategories : [DEFAULT_CATEGORY]);
+    setLoading(true);
+    try {
+      const [productsResponse, categoriesResponse] = await Promise.all([
+        getProducts(),
+        getCategories(),
+      ]);
+
+      if (productsResponse.success) {
+        setProducts(productsResponse.data || []);
+      } else {
+        Alert.alert('Error', productsResponse.message || 'Failed to load products');
+        setProducts([]);
+      }
+
+      if (categoriesResponse.success) {
+        const loadedCategories = categoriesResponse.data || [DEFAULT_CATEGORY];
+        setCategories(loadedCategories.length > 0 ? loadedCategories : [DEFAULT_CATEGORY]);
+      } else {
+        Alert.alert('Error', categoriesResponse.message || 'Failed to load categories');
+        setCategories([DEFAULT_CATEGORY]);
+      }
+    } catch (error) {
+      console.error('Load data error:', error);
+      Alert.alert('Error', 'Failed to load data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getProductsByCategory = (category) => {
@@ -77,14 +111,28 @@ const KanbanScreen = ({ navigation }) => {
     ]);
   };
 
-  const handleMoveProduct = (product, newCategory) => {
-    const updatedProducts = products.map(p =>
-      p.id === product.id || p.barcode === product.barcode
-        ? { ...p, category: newCategory }
-        : p
-    );
-    setProducts(updatedProducts);
-    saveProducts(updatedProducts);
+  const handleMoveProduct = async (product, newCategory) => {
+    try {
+      const productId = product.id || product._id;
+      const response = await updateProduct(productId, {
+        category: newCategory,
+      });
+
+      if (response.success) {
+        // Update local state
+        const updatedProducts = products.map(p =>
+          (p.id === product.id || p._id === product._id || p.barcode === product.barcode)
+            ? { ...p, category: newCategory }
+            : p
+        );
+        setProducts(updatedProducts);
+      } else {
+        Alert.alert('Error', response.message || 'Failed to move product');
+      }
+    } catch (error) {
+      console.error('Move product error:', error);
+      Alert.alert('Error', 'Failed to move product. Please try again.');
+    }
   };
 
   const handleDeleteProduct = (product) => {
@@ -96,29 +144,72 @@ const KanbanScreen = ({ navigation }) => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            const updatedProducts = products.filter(
-              p => p.id !== product.id && p.barcode !== product.barcode
-            );
-            setProducts(updatedProducts);
-            saveProducts(updatedProducts);
+          onPress: async () => {
+            try {
+              const productId = product.id || product._id;
+              const response = await deleteProduct(productId);
+
+              if (response.success) {
+                // Update local state
+                const updatedProducts = products.filter(
+                  p => (p.id !== product.id && p._id !== product._id) && p.barcode !== product.barcode
+                );
+                setProducts(updatedProducts);
+              } else {
+                Alert.alert('Error', response.message || 'Failed to delete product');
+              }
+            } catch (error) {
+              console.error('Delete product error:', error);
+              Alert.alert('Error', 'Failed to delete product. Please try again.');
+            }
           },
         },
       ]
     );
   };
 
-  const handleCreateCategory = (categoryName) => {
-    if (!categories.includes(categoryName)) {
-      const updatedCategories = [...categories, categoryName];
-      setCategories(updatedCategories);
-      saveCategories(updatedCategories);
+  const handleCreateCategory = async (categoryName) => {
+    if (!categoryName || !categoryName.trim()) {
+      Alert.alert('Error', 'Category name cannot be empty');
+      return;
+    }
+
+    if (categories.includes(categoryName)) {
+      Alert.alert('Error', 'Category already exists');
+      return;
+    }
+
+    try {
+      const response = await createCategory(categoryName);
+
+      if (response.success) {
+        // Reload categories to get the updated list
+        const categoriesResponse = await getCategories();
+        if (categoriesResponse.success) {
+          const updatedCategories = categoriesResponse.data || [DEFAULT_CATEGORY];
+          setCategories(updatedCategories.length > 0 ? updatedCategories : [DEFAULT_CATEGORY]);
+        }
+      } else {
+        Alert.alert('Error', response.message || 'Failed to create category');
+      }
+    } catch (error) {
+      console.error('Create category error:', error);
+      Alert.alert('Error', 'Failed to create category. Please try again.');
     }
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading inventory...</Text>
+      </View>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+    <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <Text style={styles.title}>Inventory Board</Text>
         <TouchableOpacity
           style={styles.addButton}
@@ -132,7 +223,7 @@ const KanbanScreen = ({ navigation }) => {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom }]}
         style={styles.scrollView}
       >
         {categories.map((category, index) => (
@@ -154,7 +245,7 @@ const KanbanScreen = ({ navigation }) => {
         onSave={handleCreateCategory}
         existingCategories={categories}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -195,6 +286,15 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: SIZES.padding,
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: SIZES.body,
+    color: COLORS.textSecondary,
   },
 });
 

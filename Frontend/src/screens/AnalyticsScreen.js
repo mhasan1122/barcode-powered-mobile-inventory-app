@@ -5,16 +5,17 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, SHADOWS, DEFAULT_CATEGORY } from '../constants';
-import { getProducts, getCategories } from '../utils/storage';
+import { getProductStats, getCategories } from '../api';
 import { getCategoryColor } from '../utils/helpers';
 
 const AnalyticsScreen = ({ navigation }) => {
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const insets = useSafeAreaInsets();
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalProducts: 0,
     totalCategories: 0,
@@ -24,40 +25,53 @@ const AnalyticsScreen = ({ navigation }) => {
 
   useEffect(() => {
     loadData();
-  }, []);
+    
+    // Refresh data when screen comes into focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadData();
+    });
 
-  useEffect(() => {
-    calculateStats();
-  }, [products, categories]);
+    return unsubscribe;
+  }, [navigation]);
 
   const loadData = async () => {
-    const loadedProducts = await getProducts();
-    const loadedCategories = await getCategories();
-    setProducts(loadedProducts);
-    setCategories(loadedCategories);
-  };
+    setLoading(true);
+    try {
+      const [statsResponse, categoriesResponse] = await Promise.all([
+        getProductStats(),
+        getCategories(),
+      ]);
 
-  const calculateStats = () => {
-    const categoryCounts = {};
-    products.forEach(product => {
-      const category = product.category || DEFAULT_CATEGORY;
-      categoryCounts[category] = (categoryCounts[category] || 0) + 1;
-    });
+      if (statsResponse.success) {
+        const statsData = statsResponse.data || {};
+        const categories = categoriesResponse.success ? (categoriesResponse.data || []) : [];
 
-    const recentProducts = [...products]
-      .sort((a, b) => {
-        const dateA = new Date(a.createdAt || 0);
-        const dateB = new Date(b.createdAt || 0);
-        return dateB - dateA;
-      })
-      .slice(0, 5);
-
-    setStats({
-      totalProducts: products.length,
-      totalCategories: categories.length,
-      categoryCounts,
-      recentProducts,
-    });
+        setStats({
+          totalProducts: statsData.totalProducts || 0,
+          totalCategories: categories.length || 0,
+          categoryCounts: statsData.categoryCounts || {},
+          recentProducts: statsData.recentProducts || [],
+        });
+      } else {
+        console.error('Failed to load stats:', statsResponse.message);
+        setStats({
+          totalProducts: 0,
+          totalCategories: 0,
+          categoryCounts: {},
+          recentProducts: [],
+        });
+      }
+    } catch (error) {
+      console.error('Load data error:', error);
+      setStats({
+        totalProducts: 0,
+        totalCategories: 0,
+        categoryCounts: {},
+        recentProducts: [],
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const StatCard = ({ icon, label, value, color = COLORS.primary }) => (
@@ -70,10 +84,22 @@ const AnalyticsScreen = ({ navigation }) => {
     </View>
   );
 
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading analytics...</Text>
+      </View>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
+    <View style={styles.container}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom }}
+      >
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <Text style={styles.title}>Analytics Dashboard</Text>
       </View>
 
@@ -151,7 +177,7 @@ const AnalyticsScreen = ({ navigation }) => {
         ) : (
           <View style={styles.recentProductsList}>
             {stats.recentProducts.map((product, index) => (
-              <View key={product.id || product.barcode || index} style={styles.recentProductItem}>
+              <View key={product.id || product._id || product.barcode || index} style={styles.recentProductItem}>
                 <View style={styles.recentProductInfo}>
                   <Text style={styles.recentProductName} numberOfLines={1}>
                     {product.name || product.productName || 'Unknown Product'}
@@ -188,7 +214,7 @@ const AnalyticsScreen = ({ navigation }) => {
         )}
       </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -366,6 +392,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.surface,
     marginLeft: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: SIZES.body,
+    color: COLORS.textSecondary,
   },
 });
 

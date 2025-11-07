@@ -7,13 +7,15 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, SHADOWS } from '../constants';
 import { isValidBarcode } from '../utils/helpers';
+import { getProductByBarcode, createProduct } from '../api';
 
 const ScannerScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -37,37 +39,79 @@ const ScannerScreen = ({ navigation }) => {
     setLoading(true);
 
     try {
-      // TODO: Replace with actual API call when backend is ready
-      // const response = await fetch(`https://assessment.shwapno.app/product/${data}`);
-      // const productData = await response.json();
-      
-      // For now, simulate API response
-      const productData = {
-        barcode: data,
-        name: `Product ${data}`,
-        price: (Math.random() * 100).toFixed(2),
-        description: 'Product description from API',
-        category: 'Uncategorized',
-        createdAt: new Date().toISOString(),
-      };
+      // First, check if product already exists
+      const existingProductResponse = await getProductByBarcode(data);
 
-      Alert.alert(
-        'Product Scanned',
-        `Barcode: ${data}\n\nProduct will be added to inventory.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              setScanned(false);
-              setLoading(false);
-              // TODO: Navigate to Kanban screen or show success message
-              // navigation.navigate('Kanban');
+      if (existingProductResponse.success && existingProductResponse.data) {
+        // Product already exists
+        Alert.alert(
+          'Product Already Exists',
+          `Barcode: ${data}\n\nProduct: ${existingProductResponse.data.name}\nCategory: ${existingProductResponse.data.category || 'Uncategorized'}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setScanned(false);
+                setLoading(false);
+              },
             },
-          },
-        ]
-      );
+          ]
+        );
+        return;
+      }
+
+      // Try to fetch product from external API
+      let productName = `Product ${data}`;
+      let productPrice = 0;
+      let productDescription = '';
+
+      try {
+        const externalResponse = await fetch(`https://assessment.shwapno.app/product/${data}`);
+        if (externalResponse.ok) {
+          const externalData = await externalResponse.json();
+          productName = externalData.name || productName;
+          productPrice = externalData.price || productPrice;
+          productDescription = externalData.description || productDescription;
+        }
+      } catch (externalError) {
+        // External API failed, use default values
+        console.log('External API not available, using default product data');
+      }
+
+      // Create product in our database
+      const createResponse = await createProduct({
+        barcode: data,
+        name: productName,
+        price: productPrice,
+        description: productDescription,
+        category: 'Uncategorized',
+      });
+
+      if (createResponse.success) {
+        Alert.alert(
+          'Product Scanned',
+          `Barcode: ${data}\n\nProduct "${productName}" has been added to inventory.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setScanned(false);
+                setLoading(false);
+                // Navigate to Kanban screen to see the new product
+                navigation.navigate('Kanban');
+              },
+            },
+          ]
+        );
+      } else {
+        throw new Error(createResponse.message || 'Failed to create product');
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to fetch product details');
+      console.error('Scan error:', error);
+      Alert.alert(
+        'Error',
+        error.message || 'Failed to process barcode. Please try again.'
+      );
       setScanned(false);
       setLoading(false);
     }
@@ -79,26 +123,26 @@ const ScannerScreen = ({ navigation }) => {
 
   if (!permission) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <ActivityIndicator size={36} color={COLORS.primary} />
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!permission.granted) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <Ionicons name="camera-outline" size={64} color={COLORS.textLight} />
         <Text style={styles.permissionText}>Camera permission is required</Text>
         <TouchableOpacity style={styles.button} onPress={requestPermission}>
           <Text style={styles.buttonText}>Grant Permission</Text>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <CameraView
         style={styles.camera}
         facing={facing}
@@ -126,7 +170,7 @@ const ScannerScreen = ({ navigation }) => {
             </View>
           )}
 
-          <View style={styles.controls}>
+          <View style={[styles.controls, { bottom: 40 + insets.bottom }]}>
             <TouchableOpacity
               style={styles.controlButton}
               onPress={toggleCameraFacing}
@@ -145,7 +189,7 @@ const ScannerScreen = ({ navigation }) => {
           </View>
         </View>
       </CameraView>
-    </SafeAreaView>
+    </View>
   );
 };
 

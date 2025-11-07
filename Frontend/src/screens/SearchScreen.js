@@ -5,34 +5,88 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, SHADOWS } from '../constants';
 import SearchBar from '../components/SearchBar';
 import ProductCard from '../components/ProductCard';
-import { getProducts } from '../utils/storage';
+import { getProducts } from '../api/products';
 
 const SearchScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadProducts();
-  }, []);
+    
+    // Refresh data when screen comes into focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadProducts();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   useEffect(() => {
-    filterProducts();
-  }, [searchQuery, products]);
+    // Use debounced search - search on backend if query is long enough
+    if (searchQuery.trim().length >= 2) {
+      searchProducts(searchQuery);
+    } else if (searchQuery.trim().length === 0) {
+      // If search is cleared, load all products
+      loadProducts();
+    } else {
+      // For single character, filter locally
+      filterProductsLocally();
+    }
+  }, [searchQuery]);
 
   const loadProducts = async () => {
-    const loadedProducts = await getProducts();
-    setProducts(loadedProducts);
-    setFilteredProducts(loadedProducts);
+    setLoading(true);
+    try {
+      const response = await getProducts();
+      if (response.success) {
+        const loadedProducts = response.data || [];
+        setProducts(loadedProducts);
+        setFilteredProducts(loadedProducts);
+      } else {
+        console.error('Failed to load products:', response.message);
+        setProducts([]);
+        setFilteredProducts([]);
+      }
+    } catch (error) {
+      console.error('Load products error:', error);
+      setProducts([]);
+      setFilteredProducts([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const filterProducts = () => {
+  const searchProducts = async (query) => {
+    setLoading(true);
+    try {
+      const response = await getProducts({ search: query });
+      if (response.success) {
+        setFilteredProducts(response.data || []);
+      } else {
+        // Fallback to local filtering
+        filterProductsLocally();
+      }
+    } catch (error) {
+      console.error('Search products error:', error);
+      // Fallback to local filtering
+      filterProductsLocally();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterProductsLocally = () => {
     if (!searchQuery.trim()) {
       setFilteredProducts(products);
       return;
@@ -66,8 +120,8 @@ const SearchScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+    <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <Text style={styles.title}>Search Products</Text>
       </View>
 
@@ -80,7 +134,14 @@ const SearchScreen = ({ navigation }) => {
         />
       </View>
 
-      {filteredProducts.length === 0 ? (
+      {loading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.emptyText}>
+            {searchQuery ? 'Searching...' : 'Loading products...'}
+          </Text>
+        </View>
+      ) : filteredProducts.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons
             name={searchQuery ? "search-outline" : "cube-outline"}
@@ -105,26 +166,26 @@ const SearchScreen = ({ navigation }) => {
       ) : (
         <FlatList
           data={filteredProducts}
-          keyExtractor={(item, index) => item.id || item.barcode || index.toString()}
+          keyExtractor={(item, index) => item.id || item._id || item.barcode || index.toString()}
           renderItem={({ item }) => (
             <ProductCard
               product={item}
               onPress={() => handleProductPress(item)}
             />
           )}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom }]}
           showsVerticalScrollIndicator={false}
         />
       )}
 
       {searchQuery && (
-        <View style={styles.resultsInfo}>
+        <View style={[styles.resultsInfo, { paddingBottom: insets.bottom }]}>
           <Text style={styles.resultsText}>
             {filteredProducts.length} result{filteredProducts.length !== 1 ? 's' : ''} found
           </Text>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 

@@ -3,7 +3,7 @@
 A barcode-powered mobile inventory management system built with React Native (Expo) and Node.js/Express.
 
 
-# Hosted Baxkend Link : https://barcode-powered-mobile-inventory-app-1.onrender.com
+# Hosted Backend Link : https://barcode-powered-mobile-inventory-app-1.onrender.com
 
 ## Project Structure
 
